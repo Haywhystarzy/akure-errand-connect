@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft } from 'lucide-react';
 
@@ -23,14 +23,21 @@ const LoginSender = () => {
     setIsLoading(true);
 
     try {
+      console.log('Attempting sender login...');
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Login error:', error);
+        throw error;
+      }
 
       if (data.user) {
+        console.log('User logged in, checking role...');
+        
         // Check if user is a sender
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
@@ -38,7 +45,10 @@ const LoginSender = () => {
           .eq('id', data.user.id)
           .single();
 
-        if (profileError) throw profileError;
+        if (profileError) {
+          console.error('Profile error:', profileError);
+          throw profileError;
+        }
 
         if (profile.role !== 'sender') {
           toast({
@@ -50,6 +60,8 @@ const LoginSender = () => {
           return;
         }
 
+        console.log('Sender login successful!');
+        
         toast({
           title: "Welcome back!",
           description: "Successfully logged in as sender.",
@@ -58,9 +70,19 @@ const LoginSender = () => {
         navigate('/dashboard-sender');
       }
     } catch (error: any) {
+      console.error('Login error:', error);
+      
+      let errorMessage = "Failed to login";
+      
+      if (error?.message?.includes('Invalid login credentials')) {
+        errorMessage = "Invalid email or password";
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Error",
-        description: error.message || "Failed to login",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

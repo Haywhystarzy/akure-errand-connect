@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, ArrowLeft } from 'lucide-react';
 
@@ -51,16 +51,26 @@ const SignupRunner = () => {
   };
 
   const uploadFile = async (file: File, bucket: string, path: string) => {
+    console.log(`Uploading file to bucket: ${bucket}, path: ${path}`);
     const { data, error } = await supabase.storage
       .from(bucket)
-      .upload(path, file);
+      .upload(path, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
     
-    if (error) throw error;
+    if (error) {
+      console.error('Upload error:', error);
+      throw error;
+    }
+    console.log('Upload successful:', data);
     return data.path;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    console.log('Starting runner signup process...');
     
     if (!formData.agreeToTerms) {
       toast({
@@ -80,9 +90,20 @@ const SignupRunner = () => {
       return;
     }
 
+    if (!formData.relationshipStatus || !formData.area) {
+      toast({
+        title: "Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
+      console.log('Attempting to sign up runner...');
+      
       // Sign up user with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
@@ -92,24 +113,35 @@ const SignupRunner = () => {
             full_name: formData.fullName,
             phone_number: formData.phoneNumber,
             role: 'runner'
-          }
+          },
+          emailRedirectTo: `${window.location.origin}/dashboard-runner`
         }
       });
 
-      if (authError) throw authError;
+      if (authError) {
+        console.error('Auth error:', authError);
+        throw authError;
+      }
+
+      console.log('Runner signed up successfully:', authData.user?.id);
 
       if (authData.user) {
         const userId = authData.user.id;
         
         // Upload files
-        const ninFrontPath = await uploadFile(files.ninFront, 'documents', `nin/${userId}/front`);
-        const ninBackPath = await uploadFile(files.ninBack, 'documents', `nin/${userId}/back`);
+        console.log('Uploading NIN front...');
+        const ninFrontPath = await uploadFile(files.ninFront, 'documents', `nin/${userId}/front.${files.ninFront.name.split('.').pop()}`);
+        
+        console.log('Uploading NIN back...');
+        const ninBackPath = await uploadFile(files.ninBack, 'documents', `nin/${userId}/back.${files.ninBack.name.split('.').pop()}`);
         
         let profilePicturePath = null;
         if (files.profilePicture) {
-          profilePicturePath = await uploadFile(files.profilePicture, 'avatars', `${userId}/profile`);
+          console.log('Uploading profile picture...');
+          profilePicturePath = await uploadFile(files.profilePicture, 'avatars', `${userId}/profile.${files.profilePicture.name.split('.').pop()}`);
         }
 
+        console.log('Saving runner profile data...');
         // Save profile data
         const { error: profileError } = await supabase
           .from('profiles')
@@ -127,19 +159,41 @@ const SignupRunner = () => {
             bio: formData.bio
           });
 
-        if (profileError) throw profileError;
+        if (profileError) {
+          console.error('Profile error:', profileError);
+          throw profileError;
+        }
+
+        console.log('Runner profile created successfully!');
 
         toast({
           title: "Success!",
           description: "Account created successfully. Please check your email for verification.",
         });
 
-        navigate('/dashboard-runner');
+        // Wait a moment then redirect
+        setTimeout(() => {
+          navigate('/dashboard-runner');
+        }, 2000);
       }
     } catch (error: any) {
+      console.error('Runner signup error:', error);
+      
+      let errorMessage = "Failed to create account";
+      
+      if (error?.message?.includes('User already registered')) {
+        errorMessage = "An account with this email already exists";
+      } else if (error?.message?.includes('Invalid email')) {
+        errorMessage = "Please enter a valid email address";
+      } else if (error?.message?.includes('Password')) {
+        errorMessage = "Password must be at least 6 characters long";
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Error",
-        description: error.message || "Failed to create account",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

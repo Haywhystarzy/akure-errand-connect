@@ -36,6 +36,54 @@ export type Database = {
         }
         Relationships: []
       }
+      profiles: {
+        Row: {
+          address: string
+          bio: string
+          created_at: string | null
+          email: string
+          full_name: string
+          id: string
+          nin_back_url: string | null
+          nin_front_url: string | null
+          phone_number: string
+          profile_picture_url: string | null
+          relationship_status: string
+          role: string
+          updated_at: string | null
+        }
+        Insert: {
+          address: string
+          bio: string
+          created_at?: string | null
+          email: string
+          full_name: string
+          id: string
+          nin_back_url?: string | null
+          nin_front_url?: string | null
+          phone_number: string
+          profile_picture_url?: string | null
+          relationship_status: string
+          role: string
+          updated_at?: string | null
+        }
+        Update: {
+          address?: string
+          bio?: string
+          created_at?: string | null
+          email?: string
+          full_name?: string
+          id?: string
+          nin_back_url?: string | null
+          nin_front_url?: string | null
+          phone_number?: string
+          profile_picture_url?: string | null
+          relationship_status?: string
+          role?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
