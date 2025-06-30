@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -8,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, ArrowLeft } from 'lucide-react';
 
@@ -77,7 +76,7 @@ const SignupSender = () => {
       .from(bucket)
       .upload(path, file, {
         cacheControl: '3600',
-        upsert: false
+        upsert: true
       });
     
     if (error) {
@@ -209,8 +208,7 @@ const SignupSender = () => {
             full_name: formData.fullName,
             phone_number: formData.phoneNumber,
             role: 'sender'
-          },
-          emailRedirectTo: `${window.location.origin}/dashboard-sender`
+          }
         }
       });
 
@@ -226,16 +224,20 @@ const SignupSender = () => {
         
         // Upload NIN front file
         console.log('Uploading NIN front...');
-        const ninFrontPath = await uploadFile(files.ninFront, 'documents', `nin/${userId}/front.${files.ninFront.name.split('.').pop()}`);
+        const ninFrontPath = await uploadFile(files.ninFront, 'documents', `nin/${userId}/front_${Date.now()}.${files.ninFront.name.split('.').pop()}`);
         
         let profilePicturePath = null;
         if (files.profilePicture) {
           console.log('Uploading profile picture...');
-          profilePicturePath = await uploadFile(files.profilePicture, 'avatars', `${userId}/profile.${files.profilePicture.name.split('.').pop()}`);
+          profilePicturePath = await uploadFile(files.profilePicture, 'avatars', `${userId}/profile_${Date.now()}.${files.profilePicture.name.split('.').pop()}`);
         }
 
         console.log('Saving profile data...');
-        // Save profile data (note: nin_back_url is now optional)
+        
+        // Wait a bit to ensure the user session is established
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Save profile data
         const { error: profileError } = await supabase
           .from('profiles')
           .insert({
@@ -245,7 +247,7 @@ const SignupSender = () => {
             phone_number: formData.phoneNumber,
             role: 'sender',
             nin_front_url: ninFrontPath,
-            nin_back_url: null, // No longer required
+            nin_back_url: null,
             profile_picture_url: profilePicturePath,
             relationship_status: formData.relationshipStatus,
             address: `${formData.address}, ${formData.area}, Akure, Ondo State`,
