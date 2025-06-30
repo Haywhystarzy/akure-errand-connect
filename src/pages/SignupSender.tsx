@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -7,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, ArrowLeft } from 'lucide-react';
 
@@ -38,13 +39,34 @@ const SignupSender = () => {
   });
   const [files, setFiles] = useState({
     ninFront: null as File | null,
-    ninBack: null as File | null,
     profilePicture: null as File | null
   });
 
   const handleFileChange = (field: keyof typeof files) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Basic file validation
+      const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      
+      if (!validTypes.includes(file.type)) {
+        toast({
+          title: "Invalid file type",
+          description: "Please upload a valid image file (JPEG, PNG, or WebP)",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      if (file.size > maxSize) {
+        toast({
+          title: "File too large",
+          description: "Please upload an image smaller than 5MB",
+          variant: "destructive",
+        });
+        return;
+      }
+      
       setFiles(prev => ({ ...prev, [field]: file }));
     }
   };
@@ -70,29 +92,104 @@ const SignupSender = () => {
     e.preventDefault();
     
     console.log('Starting signup process...');
+    console.log('Form data:', formData);
+    console.log('Files:', files);
     
+    // Detailed validation with specific error messages
+    if (!formData.fullName.trim()) {
+      toast({
+        title: "Missing Information",
+        description: "Please enter your full name",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.email.trim()) {
+      toast({
+        title: "Missing Information", 
+        description: "Please enter your email address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.phoneNumber.trim()) {
+      toast({
+        title: "Missing Information",
+        description: "Please enter your phone number", 
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.password.trim()) {
+      toast({
+        title: "Missing Information",
+        description: "Please enter a password",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      toast({
+        title: "Weak Password",
+        description: "Password must be at least 6 characters long",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.relationshipStatus) {
+      toast({
+        title: "Missing Information",
+        description: "Please select your relationship status",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.address.trim()) {
+      toast({
+        title: "Missing Information",
+        description: "Please enter your residential address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.area) {
+      toast({
+        title: "Missing Information",
+        description: "Please select your area in Akure",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.bio.trim()) {
+      toast({
+        title: "Missing Information",
+        description: "Please tell us why you want to use ErrandGo",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!files.ninFront) {
+      toast({
+        title: "Missing Document",
+        description: "Please upload your NIN card (front side)",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!formData.agreeToTerms) {
       toast({
-        title: "Error",
+        title: "Agreement Required",
         description: "Please agree to the Terms & Conditions",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!files.ninFront || !files.ninBack) {
-      toast({
-        title: "Error",
-        description: "Please upload both front and back of your NIN card",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!formData.relationshipStatus || !formData.area) {
-      toast({
-        title: "Error",
-        description: "Please fill in all required fields",
         variant: "destructive",
       });
       return;
@@ -127,12 +224,9 @@ const SignupSender = () => {
       if (authData.user) {
         const userId = authData.user.id;
         
-        // Upload files
+        // Upload NIN front file
         console.log('Uploading NIN front...');
         const ninFrontPath = await uploadFile(files.ninFront, 'documents', `nin/${userId}/front.${files.ninFront.name.split('.').pop()}`);
-        
-        console.log('Uploading NIN back...');
-        const ninBackPath = await uploadFile(files.ninBack, 'documents', `nin/${userId}/back.${files.ninBack.name.split('.').pop()}`);
         
         let profilePicturePath = null;
         if (files.profilePicture) {
@@ -141,7 +235,7 @@ const SignupSender = () => {
         }
 
         console.log('Saving profile data...');
-        // Save profile data
+        // Save profile data (note: nin_back_url is now optional)
         const { error: profileError } = await supabase
           .from('profiles')
           .insert({
@@ -151,7 +245,7 @@ const SignupSender = () => {
             phone_number: formData.phoneNumber,
             role: 'sender',
             nin_front_url: ninFrontPath,
-            nin_back_url: ninBackPath,
+            nin_back_url: null, // No longer required
             profile_picture_url: profilePicturePath,
             relationship_status: formData.relationshipStatus,
             address: `${formData.address}, ${formData.area}, Akure, Ondo State`,
@@ -278,37 +372,21 @@ const SignupSender = () => {
                 />
               </div>
 
-              {/* NIN Uploads */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="ninFront">NIN Card (Front) *</Label>
-                  <div className="relative">
-                    <Input
-                      id="ninFront"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileChange('ninFront')}
-                      required
-                    />
-                    <Upload className="w-4 h-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  </div>
-                  {files.ninFront && <p className="text-sm text-green-600">✓ {files.ninFront.name}</p>}
+              {/* NIN Upload - Only Front Required */}
+              <div className="space-y-2">
+                <Label htmlFor="ninFront">NIN Card (Front Side) *</Label>
+                <div className="relative">
+                  <Input
+                    id="ninFront"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange('ninFront')}
+                    required
+                  />
+                  <Upload className="w-4 h-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="ninBack">NIN Card (Back) *</Label>
-                  <div className="relative">
-                    <Input
-                      id="ninBack"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileChange('ninBack')}
-                      required
-                    />
-                    <Upload className="w-4 h-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  </div>
-                  {files.ninBack && <p className="text-sm text-green-600">✓ {files.ninBack.name}</p>}
-                </div>
+                {files.ninFront && <p className="text-sm text-green-600">✓ {files.ninFront.name}</p>}
+                <p className="text-xs text-gray-500">Upload a clear photo of the front of your NIN card</p>
               </div>
 
               {/* Profile Picture */}
